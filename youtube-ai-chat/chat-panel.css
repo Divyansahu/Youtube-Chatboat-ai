@@ -1,0 +1,632 @@
+/**
+ * chat-panel.css
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Styles for the floating YouTube AI Chat panel.
+ * Dark-mode first. All classes are namespaced with "yac-" to avoid collisions.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+
+/* ── CSS Variables ────────────────────────────────────────────────────────── */
+#yt-ai-chat-root {
+  --yac-bg-primary:    #0f0f10;
+  --yac-bg-secondary:  #1a1a1f;
+  --yac-bg-tertiary:   #24242c;
+  --yac-bg-hover:      #2e2e38;
+  --yac-border:        rgba(255, 255, 255, 0.08);
+  --yac-border-focus:  rgba(99, 102, 241, 0.6);
+
+  --yac-accent:        #6366f1;    /* indigo */
+  --yac-accent-hover:  #4f46e5;
+  --yac-accent-glow:   rgba(99, 102, 241, 0.25);
+
+  --yac-user-bg:       #6366f1;
+  --yac-ai-bg:         #1e1e26;
+
+  --yac-text-primary:  #f4f4f6;
+  --yac-text-secondary:#9898a8;
+  --yac-text-muted:    #5a5a6e;
+
+  --yac-success:       #22c55e;
+  --yac-warning:       #f59e0b;
+  --yac-error:         #ef4444;
+
+  --yac-radius-sm:     8px;
+  --yac-radius-md:     12px;
+  --yac-radius-lg:     16px;
+  --yac-radius-xl:     20px;
+
+  --yac-shadow:        0 24px 48px rgba(0,0,0,0.6), 0 8px 16px rgba(0,0,0,0.4);
+  --yac-panel-width:   370px;
+  --yac-panel-height:  calc(100vh - 120px);
+  --yac-max-height:    720px;
+  --yac-z:             999999;
+
+  --yac-font:          'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --yac-mono:          'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+}
+
+/* ── Root container ───────────────────────────────────────────────────────── */
+#yt-ai-chat-root * {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+#yt-ai-chat-root {
+  position: fixed;
+  top: 80px;
+  right: 16px;
+  z-index: var(--yac-z);
+  font-family: var(--yac-font);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--yac-text-primary);
+  -webkit-font-smoothing: antialiased;
+  pointer-events: none; /* let clicks through except on panel elements */
+}
+
+#yt-ai-chat-root > * {
+  pointer-events: auto;
+}
+
+/* ── Toggle button ────────────────────────────────────────────────────────── */
+#yac-toggle-btn {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--yac-accent);
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 20px var(--yac-accent-glow), var(--yac-shadow);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  z-index: calc(var(--yac-z) + 1);
+}
+
+#yac-toggle-btn:hover {
+  background: var(--yac-accent-hover);
+  transform: scale(1.08);
+  box-shadow: 0 6px 28px var(--yac-accent-glow), var(--yac-shadow);
+}
+
+#yac-toggle-btn svg {
+  width: 22px;
+  height: 22px;
+  color: white;
+}
+
+#yac-toggle-btn.yac-toggle-active {
+  background: var(--yac-bg-tertiary);
+  border-color: var(--yac-border-focus);
+}
+
+#yac-notification-dot {
+  display: none;
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--yac-success);
+  border: 2px solid var(--yac-bg-primary);
+  animation: yac-pulse 2s infinite;
+}
+
+/* ── Panel ────────────────────────────────────────────────────────────────── */
+#yac-panel {
+  position: absolute;
+  top: 0;
+  right: 56px;
+  width: var(--yac-panel-width);
+  height: var(--yac-panel-height);
+  max-height: var(--yac-max-height);
+  min-height: 400px;
+  background: var(--yac-bg-primary);
+  border: 1px solid var(--yac-border);
+  border-radius: var(--yac-radius-xl);
+  box-shadow: var(--yac-shadow);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  backdrop-filter: blur(12px);
+  transition: opacity 0.25s ease, transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transform-origin: top right;
+}
+
+#yac-panel.yac-panel-hidden {
+  opacity: 0;
+  transform: scale(0.92) translateX(8px);
+  pointer-events: none;
+}
+
+/* ── Header ───────────────────────────────────────────────────────────────── */
+#yac-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  background: var(--yac-bg-secondary);
+  border-bottom: 1px solid var(--yac-border);
+  flex-shrink: 0;
+}
+
+#yac-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#yac-logo {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--yac-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+#yac-logo svg {
+  width: 18px;
+  height: 18px;
+  color: white;
+}
+
+#yac-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--yac-text-primary);
+  letter-spacing: -0.01em;
+}
+
+#yac-status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 1px;
+}
+
+#yac-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: background 0.3s ease;
+}
+
+.yac-dot-ready     { background: var(--yac-success); animation: yac-pulse 3s infinite; }
+.yac-dot-processing{ background: var(--yac-warning); animation: yac-pulse 1.2s infinite; }
+.yac-dot-error     { background: var(--yac-error); }
+.yac-dot-sending   { background: var(--yac-accent); animation: yac-pulse 0.8s infinite; }
+
+#yac-status-text {
+  font-size: 11px;
+  color: var(--yac-text-muted);
+}
+
+#yac-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+#yac-header-actions button {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--yac-radius-sm);
+  border: none;
+  background: transparent;
+  color: var(--yac-text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+
+#yac-header-actions button:hover {
+  background: var(--yac-bg-hover);
+  color: var(--yac-text-primary);
+}
+
+#yac-header-actions button svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 2;
+}
+
+/* ── Video info bar ───────────────────────────────────────────────────────── */
+#yac-video-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--yac-bg-secondary);
+  border-bottom: 1px solid var(--yac-border);
+  flex-shrink: 0;
+}
+
+#yac-video-thumbnail-container {
+  width: 56px;
+  height: 36px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--yac-bg-tertiary);
+  flex-shrink: 0;
+}
+
+#yac-video-thumbnail {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+#yac-video-details {
+  flex: 1;
+  min-width: 0;
+}
+
+#yac-video-title-text {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--yac-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.4;
+}
+
+#yac-video-id-text {
+  font-size: 11px;
+  color: var(--yac-text-muted);
+  font-family: var(--yac-mono);
+  margin-top: 2px;
+}
+
+/* ── Processing banner ────────────────────────────────────────────────────── */
+#yac-processing-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: rgba(245, 158, 11, 0.1);
+  border-bottom: 1px solid rgba(245, 158, 11, 0.2);
+  font-size: 12px;
+  color: var(--yac-warning);
+  flex-shrink: 0;
+}
+
+/* ── Error banner ─────────────────────────────────────────────────────────── */
+#yac-error-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: rgba(239, 68, 68, 0.1);
+  border-bottom: 1px solid rgba(239, 68, 68, 0.2);
+  font-size: 12px;
+  color: #fca5a5;
+  flex-shrink: 0;
+}
+
+#yac-error-banner svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+#yac-error-text {
+  flex: 1;
+}
+
+#yac-error-dismiss {
+  background: none;
+  border: none;
+  color: #fca5a5;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0 2px;
+  line-height: 1;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+}
+
+#yac-error-dismiss:hover { opacity: 1; }
+
+.hidden { display: none !important; }
+
+/* ── Messages area ────────────────────────────────────────────────────────── */
+#yac-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  scroll-behavior: smooth;
+}
+
+#yac-messages::-webkit-scrollbar { width: 4px; }
+#yac-messages::-webkit-scrollbar-track { background: transparent; }
+#yac-messages::-webkit-scrollbar-thumb {
+  background: var(--yac-bg-tertiary);
+  border-radius: 2px;
+}
+
+/* ── Welcome state ────────────────────────────────────────────────────────── */
+#yac-welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 10px;
+  flex: 1;
+  padding: 20px;
+}
+
+#yac-welcome-icon {
+  font-size: 36px;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+#yac-welcome-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--yac-text-primary);
+}
+
+#yac-welcome-sub {
+  font-size: 12px;
+  color: var(--yac-text-muted);
+  max-width: 240px;
+  line-height: 1.6;
+}
+
+#yac-suggested-questions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  width: 100%;
+  max-width: 280px;
+}
+
+.yac-suggestion {
+  background: var(--yac-bg-tertiary);
+  border: 1px solid var(--yac-border);
+  border-radius: var(--yac-radius-md);
+  color: var(--yac-text-secondary);
+  font-size: 12px;
+  padding: 8px 14px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  font-family: var(--yac-font);
+}
+
+.yac-suggestion:hover {
+  background: var(--yac-bg-hover);
+  color: var(--yac-text-primary);
+  border-color: var(--yac-border-focus);
+}
+
+/* ── Message bubbles ──────────────────────────────────────────────────────── */
+.yac-message {
+  display: flex;
+  flex-direction: column;
+  max-width: 88%;
+  animation: yac-slide-in 0.2s ease;
+}
+
+.yac-message-user {
+  align-items: flex-end;
+  align-self: flex-end;
+}
+
+.yac-message-ai {
+  align-items: flex-start;
+  align-self: flex-start;
+}
+
+.yac-bubble {
+  padding: 10px 13px;
+  border-radius: var(--yac-radius-lg);
+  font-size: 13px;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.yac-message-user .yac-bubble {
+  background: var(--yac-user-bg);
+  color: white;
+  border-bottom-right-radius: 4px;
+}
+
+.yac-message-ai .yac-bubble {
+  background: var(--yac-ai-bg);
+  color: var(--yac-text-primary);
+  border: 1px solid var(--yac-border);
+  border-bottom-left-radius: 4px;
+}
+
+.yac-bubble code {
+  font-family: var(--yac-mono);
+  font-size: 12px;
+  background: rgba(0,0,0,0.3);
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: #a78bfa;
+}
+
+.yac-bubble strong { font-weight: 600; color: white; }
+.yac-bubble em { font-style: italic; opacity: 0.85; }
+
+.yac-message-meta {
+  font-size: 10px;
+  color: var(--yac-text-muted);
+  margin-top: 3px;
+  padding: 0 2px;
+}
+
+/* ── Typing indicator ─────────────────────────────────────────────────────── */
+.yac-typing-bubble {
+  padding: 12px 16px !important;
+}
+
+.yac-typing-dots {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.yac-typing-dots span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--yac-text-muted);
+  animation: yac-typing 1.4s infinite;
+}
+
+.yac-typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+.yac-typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+/* ── Input area ───────────────────────────────────────────────────────────── */
+#yac-input-area {
+  padding: 12px 14px 14px;
+  border-top: 1px solid var(--yac-border);
+  background: var(--yac-bg-secondary);
+  flex-shrink: 0;
+}
+
+#yac-input-wrapper {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  background: var(--yac-bg-tertiary);
+  border: 1px solid var(--yac-border);
+  border-radius: var(--yac-radius-lg);
+  padding: 10px 10px 10px 14px;
+  transition: border-color 0.2s;
+}
+
+#yac-input-wrapper:focus-within {
+  border-color: var(--yac-border-focus);
+  box-shadow: 0 0 0 3px var(--yac-accent-glow);
+}
+
+#yac-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--yac-text-primary);
+  font-family: var(--yac-font);
+  font-size: 13px;
+  line-height: 1.5;
+  resize: none;
+  min-height: 22px;
+  max-height: 120px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+#yac-input::placeholder { color: var(--yac-text-muted); }
+#yac-input::-webkit-scrollbar { display: none; }
+
+#yac-send-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--yac-accent);
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.15s, transform 0.1s, opacity 0.15s;
+}
+
+#yac-send-btn:hover:not(:disabled) {
+  background: var(--yac-accent-hover);
+  transform: scale(1.05);
+}
+
+#yac-send-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+#yac-send-btn svg {
+  width: 15px;
+  height: 15px;
+  color: white;
+}
+
+#yac-input-footer {
+  display: flex;
+  justify-content: space-between;
+  padding: 5px 2px 0;
+}
+
+#yac-char-count,
+#yac-hint {
+  font-size: 10px;
+  color: var(--yac-text-muted);
+}
+
+/* ── Spinners ─────────────────────────────────────────────────────────────── */
+.yac-spinner-small {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(245, 158, 11, 0.3);
+  border-top-color: var(--yac-warning);
+  border-radius: 50%;
+  animation: yac-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+/* ── Animations ───────────────────────────────────────────────────────────── */
+@keyframes yac-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+@keyframes yac-typing {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30%            { transform: translateY(-6px); opacity: 1; }
+}
+
+@keyframes yac-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes yac-slide-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Responsive: narrow screens ───────────────────────────────────────────── */
+@media (max-width: 900px) {
+  #yt-ai-chat-root {
+    --yac-panel-width: 320px;
+    top: 64px;
+    right: 8px;
+  }
+}
+
+@media (max-width: 600px) {
+  #yac-panel {
+    right: 0;
+    width: calc(100vw - 64px);
+  }
+}
