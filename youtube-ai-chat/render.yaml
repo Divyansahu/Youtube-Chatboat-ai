@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: youtube-ai-chat
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn backend:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: SUPADATA_API_KEY
+        sync: false
