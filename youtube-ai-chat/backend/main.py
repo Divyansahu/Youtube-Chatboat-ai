@@ -1,0 +1,236 @@
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+
+from config import logger, video_store
+from models import (
+    ProcessVideoRequest, AskRequest, ProcessVideoResponse, AskResponse,
+    PipelineRequest, SummaryResponse, QuizResponse, RoadmapResponse
+)
+from services import build_chain_for_video
+from agents import app_graph
+
+app = FastAPI(
+    title="YouTube AI Chat Backend",
+    description="Hugging Face + FAISS RAG backend for the YouTube AI Chat Chrome Extension",
+    version="1.1.0"
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],       
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.get("/")
+async def health():
+    return {
+        "status": "ok",
+        "service": "YouTube AI Chat Backend",
+        "indexed_videos": list(video_store.keys())
+    }
+
+
+# ── Helper: Ensure video is indexed in memory ─────────────────────────────────
+def ensure_video_indexed(video_id: str):
+    if video_id not in video_store:
+        logger.info(f"[{video_id}] Not indexed yet – indexing on demand…")
+        try:
+            result = build_chain_for_video(video_id)
+            video_store[video_id] = result
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
+
+
+@app.post("/process-video", response_model=ProcessVideoResponse)
+async def process_video(body: ProcessVideoRequest):
+    video_id = body.video_id.strip()
+
+    if not video_id:
+        raise HTTPException(status_code=400, detail="video_id is required")
+
+    if video_id in video_store:
+        logger.info(f"[{video_id}] Already indexed. Skipping.")
+        return ProcessVideoResponse(
+            success=True,
+            video_id=video_id,
+            message="Already processed",
+            chunk_count=video_store[video_id].get("chunk_count")
+        )
+
+    try:
+        result = build_chain_for_video(video_id)
+        video_store[video_id] = result
+        logger.info(f"[{video_id}] ✅ Ready. {result['chunk_count']} chunks indexed.")
+        return ProcessVideoResponse(
+            success=True,
+            video_id=video_id,
+            message="Video processed and indexed successfully",
+            chunk_count=result["chunk_count"]
+        )
+    except ValueError as e:
+        logger.error(f"[{video_id}] ❌ {e}")
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        logger.error(f"[{video_id}] ❌ Unexpected error: {e}")
+        raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
+
+
+@app.post("/ask", response_model=AskResponse)
+async def ask(body: AskRequest):
+    video_id = body.video_id.strip()
+    question = body.question.strip()
+
+    if not video_id:
+        raise HTTPException(status_code=400, detail="video_id is required")
+    if not question:
+        raise HTTPException(status_code=400, detail="question is required")
+
+    ensure_video_indexed(video_id)
+    chain = video_store[video_id]["chain"]
+
+    try:
+        logger.info(f"[{video_id}] Invoking chain with: '{question}'")
+        answer = chain.invoke(question)
+        logger.info(f"[{video_id}] ✅ Answer generated.")
+        return AskResponse(answer=answer, video_id=video_id)
+    except Exception as e:
+        logger.error(f"[{video_id}] Chain error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate answer: {str(e)}")
+
+
+@app.delete("/video/{video_id}")
+async def clear_video(video_id: str):
+    if video_id in video_store:
+        del video_store[video_id]
+        return {"success": True, "message": f"Cleared {video_id}"}
+    return {"success": False, "message": "Video not found in store"}
+
+
+@app.post("/summary", response_model=SummaryResponse)
+async def get_summary(body: PipelineRequest):
+    video_id = body.video_id.strip()
+    if not video_id:
+        raise HTTPException(status_code=400, detail="video_id is required")
+
+    ensure_video_indexed(video_id)
+    video_data = video_store[video_id]
+
+    if body.force_regenerate:
+        video_data.pop("summary", None)
+        video_data.pop("quiz", None)
+        video_data.pop("roadmap", None)
+
+    if "summary" in video_data:
+        return SummaryResponse(success=True, video_id=video_id, summary=video_data["summary"])
+
+    try:
+        initial_state = {
+            "video_id": video_id,
+            "transcript": video_data.get("transcript", ""),
+            "target": "summary",
+            "summary": None,
+            "quiz": None,
+            "roadmap": None
+        }
+        logger.info(f"[{video_id}] LangGraph: Invoking pipeline for summary...")
+        final_state = app_graph.invoke(initial_state)
+        
+        summary = final_state.get("summary")
+        if not summary:
+            raise ValueError("No summary was generated by the graph.")
+            
+        video_data["summary"] = summary
+        return SummaryResponse(success=True, video_id=video_id, summary=summary)
+    except Exception as e:
+        logger.error(f"[{video_id}] LangGraph summary workflow error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate summary: {str(e)}")
+
+
+@app.post("/quiz", response_model=QuizResponse)
+async def get_quiz(body: PipelineRequest):
+    video_id = body.video_id.strip()
+    if not video_id:
+        raise HTTPException(status_code=400, detail="video_id is required")
+
+    ensure_video_indexed(video_id)
+    video_data = video_store[video_id]
+
+    if body.force_regenerate:
+        video_data.pop("quiz", None)
+        video_data.pop("roadmap", None)
+
+    if "quiz" in video_data:
+        return QuizResponse(success=True, video_id=video_id, quiz=video_data["quiz"])
+
+    try:
+        initial_state = {
+            "video_id": video_id,
+            "transcript": video_data.get("transcript", ""),
+            "target": "quiz",
+            "summary": video_data.get("summary"),
+            "quiz": None,
+            "roadmap": None
+        }
+        logger.info(f"[{video_id}] LangGraph: Invoking pipeline for quiz...")
+        final_state = app_graph.invoke(initial_state)
+        
+        quiz = final_state.get("quiz")
+        if not quiz:
+            raise ValueError("No quiz was generated by the graph.")
+            
+        if final_state.get("summary"):
+            video_data["summary"] = final_state["summary"]
+        video_data["quiz"] = quiz
+        
+        return QuizResponse(success=True, video_id=video_id, quiz=quiz)
+    except Exception as e:
+        logger.error(f"[{video_id}] LangGraph quiz workflow error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate quiz: {str(e)}")
+
+
+@app.post("/roadmap", response_model=RoadmapResponse)
+async def get_roadmap(body: PipelineRequest):
+    video_id = body.video_id.strip()
+    if not video_id:
+        raise HTTPException(status_code=400, detail="video_id is required")
+
+    ensure_video_indexed(video_id)
+    video_data = video_store[video_id]
+
+    if body.force_regenerate:
+        video_data.pop("roadmap", None)
+
+    if "roadmap" in video_data:
+        return RoadmapResponse(success=True, video_id=video_id, roadmap=video_data["roadmap"])
+
+    try:
+        initial_state = {
+            "video_id": video_id,
+            "transcript": video_data.get("transcript", ""),
+            "target": "roadmap",
+            "summary": video_data.get("summary"),
+            "quiz": video_data.get("quiz"),
+            "roadmap": None
+        }
+        logger.info(f"[{video_id}] LangGraph: Invoking pipeline for roadmap...")
+        final_state = app_graph.invoke(initial_state)
+        
+        roadmap = final_state.get("roadmap")
+        if not roadmap:
+            raise ValueError("No roadmap was generated by the graph.")
+            
+        if final_state.get("summary"):
+            video_data["summary"] = final_state["summary"]
+        if final_state.get("quiz"):
+            video_data["quiz"] = final_state["quiz"]
+        video_data["roadmap"] = roadmap
+        
+        return RoadmapResponse(success=True, video_id=video_id, roadmap=roadmap)
+    except Exception as e:
+        logger.error(f"[{video_id}] LangGraph roadmap workflow error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate roadmap: {str(e)}")

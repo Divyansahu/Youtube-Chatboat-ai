@@ -24,6 +24,22 @@
   let isPanelOpen = true;
   let chatMessages = [];    // { role: "user"|"ai", text, timestamp }
 
+  // Pipeline Agent State
+  let activeTab = "chat";
+  let currentSummary = null;
+  let currentQuiz = null;
+  let currentRoadmap = null;
+  let isGeneratingSummary = false;
+  let isGeneratingQuiz = false;
+  let isGeneratingRoadmap = false;
+
+  // Interactive Quiz State
+  let quizActiveIndex = 0;
+  let quizScore = 0;
+  let selectedOptionIndex = null;
+  let questionAnswered = false;
+  let roadmapCheckpointsState = {};
+
   // ── Utility: extract video ID from current URL ────────────────────────────
   function getVideoId() {
     const params = new URLSearchParams(window.location.search);
@@ -51,6 +67,27 @@
     const div = document.createElement("div");
     div.textContent = text;
     return div.innerHTML;
+  }
+
+  // ── Utility: convert timestamp (MM:SS, HH:MM:SS, or seconds) to seconds ───
+  function timestampToSeconds(timeStr) {
+    if (!timeStr) return 0;
+    const parts = timeStr.trim().split(':');
+    if (parts.length === 2) {
+      return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+    } else if (parts.length === 3) {
+      return parseInt(parts[0], 10) * 3600 + parseInt(parts[1], 10) * 60 + parseInt(parts[2], 10);
+    }
+    return parseInt(timeStr, 10) || 0;
+  }
+
+  // ── Utility: seek YouTube video to timestamp ───────────────────────────────
+  function seekVideoTo(seconds) {
+    const video = document.querySelector('video');
+    if (video) {
+      video.currentTime = seconds;
+      video.play();
+    }
   }
 
   // ── Utility: simple markdown-like formatting for AI responses ────────────
@@ -88,6 +125,47 @@
     });
   }
 
+  // Generic Storage Helpers for Pipeline
+  async function loadStorageItem(videoId, prefix) {
+    return new Promise((resolve) => {
+      const key = prefix + videoId;
+      chrome.storage.local.get([key], (result) => {
+        resolve(result[key] || null);
+      });
+    });
+  }
+
+  async function saveStorageItem(videoId, prefix, data) {
+    const key = prefix + videoId;
+    return new Promise((resolve) => {
+      chrome.storage.local.set({ [key]: data }, resolve);
+    });
+  }
+
+  async function deleteStorageItem(videoId, prefix) {
+    const key = prefix + videoId;
+    return new Promise((resolve) => {
+      chrome.storage.local.remove([key], resolve);
+    });
+  }
+
+  async function loadRoadmapCheckpointsState(videoId) {
+    return new Promise((resolve) => {
+      const key = "roadmap_checkpoints_" + videoId;
+      chrome.storage.local.get([key], (result) => {
+        roadmapCheckpointsState = result[key] || {};
+        resolve();
+      });
+    });
+  }
+
+  async function saveRoadmapCheckpointsState(videoId) {
+    const key = "roadmap_checkpoints_" + videoId;
+    return new Promise((resolve) => {
+      chrome.storage.local.set({ [key]: roadmapCheckpointsState }, resolve);
+    });
+  }
+
   // ── DOM: build the entire chat panel ─────────────────────────────────────
   function buildPanel() {
     // Remove any existing panel (e.g., after SPA navigation)
@@ -97,7 +175,7 @@
     root.id = "yt-ai-chat-root";
     root.innerHTML = `
       <!-- Toggle button (always visible) -->
-      <button id="yac-toggle-btn" title="Toggle AI Chat">
+      <button id="yac-toggle-btn" class="${isPanelOpen ? 'yac-toggle-active' : ''}" title="Toggle AI Chat">
         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M12 2C6.48 2 2 6.48 2 12C2 14.05 2.61 15.96 3.66 17.56L2 22L6.44 20.34C8.04 21.39 9.95 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2Z" fill="currentColor"/>
           <circle cx="8" cy="12" r="1.2" fill="white"/>
@@ -108,7 +186,7 @@
       </button>
 
       <!-- Main panel -->
-      <div id="yac-panel">
+      <div id="yac-panel" class="${isPanelOpen ? '' : 'yac-panel-hidden'}">
         <!-- Header -->
         <div id="yac-header">
           <div id="yac-header-left">
@@ -150,6 +228,14 @@
           </div>
         </div>
 
+        <!-- Tabs Navigation -->
+        <div id="yac-tabs">
+          <button class="yac-tab-btn active" data-tab="chat">💬 Chat</button>
+          <button class="yac-tab-btn" data-tab="summary">📝 Summary</button>
+          <button class="yac-tab-btn" data-tab="quiz">🧩 Quiz</button>
+          <button class="yac-tab-btn" data-tab="roadmap">🎯 Roadmap</button>
+        </div>
+
         <!-- Processing banner (shown while backend processes transcript) -->
         <div id="yac-processing-banner" class="hidden">
           <div class="yac-spinner-small"></div>
@@ -165,21 +251,49 @@
           <button id="yac-error-dismiss">✕</button>
         </div>
 
-        <!-- Messages container -->
-        <div id="yac-messages">
-          <div id="yac-welcome">
-            <div id="yac-welcome-icon">✨</div>
-            <div id="yac-welcome-title">Ask anything about this video</div>
-            <div id="yac-welcome-sub">I've read the transcript and I'm ready to answer your questions.</div>
-            <div id="yac-suggested-questions">
-              <button class="yac-suggestion">Summarize this video</button>
-              <button class="yac-suggestion">What are the key points?</button>
-              <button class="yac-suggestion">Any action items?</button>
+        <!-- Tab Content Wrapper -->
+        <div id="yac-tab-content">
+          <!-- Chat Tab -->
+          <div id="yac-tab-pane-chat" class="yac-tab-pane active-pane">
+            <div id="yac-messages">
+              <div id="yac-welcome">
+                <div id="yac-welcome-icon">✨</div>
+                <div id="yac-welcome-title">Ask anything about this video</div>
+                <div id="yac-welcome-sub">I've read the transcript and I'm ready to answer your questions.</div>
+                <div id="yac-suggested-questions">
+                  <button class="yac-suggestion">Summarize this video</button>
+                  <button class="yac-suggestion">What are the key points?</button>
+                  <button class="yac-suggestion">Any action items?</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Summary Tab -->
+          <div id="yac-tab-pane-summary" class="yac-tab-pane">
+            <div class="yac-tab-scrollable" id="yac-summary-scrollable">
+              <!-- CTA / Summary content gets injected here -->
+            </div>
+          </div>
+
+          <!-- Quiz Tab -->
+          <div id="yac-tab-pane-quiz" class="yac-tab-pane">
+            <div class="yac-tab-scrollable" id="yac-quiz-scrollable">
+              <!-- CTA / Quiz questions get injected here -->
+            </div>
+          </div>
+
+
+
+          <!-- Roadmap Tab -->
+          <div id="yac-tab-pane-roadmap" class="yac-tab-pane">
+            <div class="yac-tab-scrollable" id="yac-roadmap-scrollable">
+              <!-- CTA / Roadmap steps get injected here -->
             </div>
           </div>
         </div>
 
-        <!-- Input area -->
+        <!-- Input area (only for Chat) -->
         <div id="yac-input-area">
           <div id="yac-input-wrapper">
             <textarea
@@ -213,6 +327,16 @@
     document.getElementById("yac-toggle-btn").addEventListener("click", togglePanel);
     document.getElementById("yac-minimize-btn").addEventListener("click", togglePanel);
 
+    // Click delegation for timestamp seeking
+    document.getElementById("yt-ai-chat-root").addEventListener("click", (e) => {
+      const badge = e.target.closest(".yt-chat-timestamp-badge");
+      if (badge) {
+        const timeStr = badge.getAttribute("data-time");
+        const seconds = timestampToSeconds(timeStr);
+        seekVideoTo(seconds);
+      }
+    });
+
     // Clear history
     document.getElementById("yac-clear-btn").addEventListener("click", async () => {
       if (!currentVideoId) return;
@@ -225,6 +349,14 @@
     // Dismiss error banner
     document.getElementById("yac-error-dismiss").addEventListener("click", () => {
       hideError();
+    });
+
+    // Tab buttons click triggers
+    document.querySelectorAll(".yac-tab-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const tabId = btn.getAttribute("data-tab");
+        switchTab(tabId);
+      });
     });
 
     // Textarea: auto-resize + char count + send on Enter
@@ -411,6 +543,25 @@
   }
 
   // ── Core: send a question to the backend ──────────────────────────────────
+//   User types question
+//           ↓
+//  Validate input
+//           ↓
+//   Add user message
+//           ↓
+//  Save history
+//           ↓
+//  Show typing indicator
+//           ↓
+//  POST /ask
+//           ↓
+//  Backend response
+//           ↓
+//   Create AI message
+//           ↓
+//   Save history
+//           ↓
+//   Display answer
   async function handleSend() {
     if (isSending || isProcessing) return;
 
@@ -500,6 +651,19 @@
   }
 
   // ── Core: initialize / switch to a video ─────────────────────────────────
+//   Video Opened
+//       ↓
+// Load History
+//       ↓
+// Update Title
+//       ↓
+// Show Processing
+//       ↓
+// Ask Background Script
+//       ↓
+// Process Transcript
+//       ↓
+// Ready To Chat
   async function initVideo(videoId) {
     if (!videoId) return;
 
@@ -508,11 +672,16 @@
 
     currentVideoId = videoId;
     chatMessages = [];
+    currentSummary = null;
+    currentQuiz = null;
+    currentRoadmap = null;
 
     // Build the panel if it doesn't exist yet
     if (!document.getElementById("yt-ai-chat-root")) {
       buildPanel();
     }
+
+    switchTab("chat");
 
     // Update video info (title may not be in DOM yet – wait a bit)
     setTimeout(() => {
@@ -524,9 +693,15 @@
     setStatus("processing", "Processing transcript…");
     setProcessing(true);
 
-    // Load existing history
+    // Load existing history & data from storage
     chatMessages = await loadChatHistory(videoId);
+    currentSummary = await loadStorageItem(videoId, CONFIG.STORAGE_KEYS.SUMMARY_PREFIX);
+    currentQuiz = await loadStorageItem(videoId, CONFIG.STORAGE_KEYS.QUIZ_PREFIX);
+    currentRoadmap = await loadStorageItem(videoId, CONFIG.STORAGE_KEYS.ROADMAP_PREFIX);
+    await loadRoadmapCheckpointsState(videoId);
+
     renderMessages();
+    renderTabContent(activeTab);
 
     // Ask background script to process the video
     chrome.runtime.sendMessage(
@@ -548,6 +723,551 @@
     );
   }
 
+  // ── Tab Switching & Rendering Logic ──────────────────────────────────────
+  function switchTab(tabId) {
+    activeTab = tabId;
+
+    // Update active tab button style
+    document.querySelectorAll(".yac-tab-btn").forEach((btn) => {
+      if (btn.getAttribute("data-tab") === tabId) {
+        btn.classList.add("active");
+      } else {
+        btn.classList.remove("active");
+      }
+    });
+
+    // Update active pane visibility
+    document.querySelectorAll(".yac-tab-pane").forEach((pane) => {
+      if (pane.id === `yac-tab-pane-${tabId}`) {
+        pane.classList.add("active-pane");
+      } else {
+        pane.classList.remove("active-pane");
+      }
+    });
+
+    // Show/hide input area (only visible for Chat)
+    const inputArea = document.getElementById("yac-input-area");
+    if (inputArea) {
+      if (tabId === "chat") {
+        inputArea.classList.remove("hidden");
+      } else {
+        inputArea.classList.add("hidden");
+      }
+    }
+
+    // Load content for specific tab if needed
+    renderTabContent(tabId);
+  }
+
+  function renderTabContent(tabId) {
+    if (tabId === "chat") {
+      renderMessages();
+      return;
+    }
+
+    if (tabId === "summary") {
+      const scrollable = document.getElementById("yac-summary-scrollable");
+      if (currentSummary) {
+        scrollable.innerHTML = `
+          <div class="yac-summary-container">
+            <div class="yac-summary-actions">
+              <button class="yac-action-btn-sm" id="yac-copy-summary-btn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                </svg>
+                Copy Summary
+              </button>
+              <button class="yac-action-btn-sm" id="yac-regen-summary-btn" style="background: rgba(239, 68, 68, 0.08); color: #ef4444; border-color: rgba(239, 68, 68, 0.2);" title="Regenerate summary (clears downstream quiz, cards, roadmap)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                  <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+                </svg>
+                Regenerate
+              </button>
+            </div>
+            <div class="yac-summary-text">
+              ${parseSummaryMarkdown(currentSummary)}
+            </div>
+          </div>
+        `;
+        document.getElementById("yac-copy-summary-btn").addEventListener("click", () => {
+          navigator.clipboard.writeText(currentSummary);
+          const btn = document.getElementById("yac-copy-summary-btn");
+          const origText = btn.innerHTML;
+          btn.innerHTML = "✓ Copied!";
+          setTimeout(() => { btn.innerHTML = origText; }, 2000);
+        });
+        document.getElementById("yac-regen-summary-btn").addEventListener("click", () => {
+          if (confirm("Regenerate summary? This will also clear your quiz and roadmap history for this video.")) {
+            generateSummary(true);
+          }
+        });
+      } else if (isGeneratingSummary) {
+        renderLoading(scrollable, "Generating summary...", "Summarizer Agent is reading the video transcript...");
+      } else {
+        renderCTA(
+          scrollable,
+          "📝",
+          "Generate Summary",
+          "Read a structured overview, key takeaways, and action items from this video.",
+          "yac-gen-summary-btn",
+          "Summary"
+        );
+        document.getElementById("yac-gen-summary-btn").addEventListener("click", () => generateSummary());
+      }
+    }
+
+    if (tabId === "quiz") {
+      const scrollable = document.getElementById("yac-quiz-scrollable");
+      if (currentQuiz) {
+        renderQuiz();
+      } else if (isGeneratingQuiz) {
+        renderLoading(scrollable, "Generating quiz...", "Quiz Agent is analyzing the summary content...");
+      } else {
+        renderCTA(
+          scrollable,
+          "🧠",
+          "Generate Video Quiz",
+          "Test your understanding of the concepts presented in this video with a 5-question multiple choice quiz.",
+          "yac-gen-quiz-btn",
+          "Quiz"
+        );
+        document.getElementById("yac-gen-quiz-btn").addEventListener("click", () => generateQuiz());
+      }
+    }
+
+
+
+    if (tabId === "roadmap") {
+      const scrollable = document.getElementById("yac-roadmap-scrollable");
+      if (currentRoadmap) {
+        renderRoadmap();
+      } else if (isGeneratingRoadmap) {
+        renderLoading(scrollable, "Generating roadmap...", "Roadmap Agent is designing your study path...");
+      } else {
+        renderCTA(
+          scrollable,
+          "🗺️",
+          "Generate Study Roadmap",
+          "Get a custom step-by-step roadmap and learning checklist to master the topics in this video.",
+          "yac-gen-roadmap-btn",
+          "Roadmap"
+        );
+        document.getElementById("yac-gen-roadmap-btn").addEventListener("click", () => generateRoadmap());
+      }
+    }
+  }
+
+  function renderCTA(element, emoji, title, subText, btnId, tabName) {
+    element.innerHTML = `
+      <div class="yac-cta-state">
+        <div class="yac-cta-icon">${emoji}</div>
+        <div class="yac-cta-title">${title}</div>
+        <div class="yac-cta-sub">${subText}</div>
+        <button class="yac-action-btn" id="${btnId}">Generate ${tabName}</button>
+      </div>
+    `;
+  }
+
+  function renderLoading(element, title, subText) {
+    element.innerHTML = `
+      <div class="yac-loading-state">
+        <div class="yac-spinner-large"></div>
+        <div class="yac-loading-title">${title}</div>
+        <div class="yac-loading-sub">${subText}</div>
+      </div>
+    `;
+  }
+
+  // ── API Generation Methods ────────────────────────────────────────────────
+  async function generateSummary(force = false) {
+    if (force) {
+      currentSummary = null;
+      currentQuiz = null;
+      currentRoadmap = null;
+      await deleteStorageItem(currentVideoId, CONFIG.STORAGE_KEYS.SUMMARY_PREFIX);
+      await deleteStorageItem(currentVideoId, CONFIG.STORAGE_KEYS.QUIZ_PREFIX);
+      await deleteStorageItem(currentVideoId, CONFIG.STORAGE_KEYS.ROADMAP_PREFIX);
+    }
+    isGeneratingSummary = true;
+    renderTabContent("summary");
+    try {
+      const url = `${CONFIG.BACKEND_BASE_URL}${CONFIG.ENDPOINTS.SUMMARY}`;
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ video_id: currentVideoId, force_regenerate: force }),
+      });
+      if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+      const data = await response.json();
+      if (data.success && data.summary) {
+        currentSummary = data.summary;
+        await saveStorageItem(currentVideoId, CONFIG.STORAGE_KEYS.SUMMARY_PREFIX, currentSummary);
+      }
+    } catch (err) {
+      showError(`Failed to generate summary: ${err.message}`);
+    } finally {
+      isGeneratingSummary = false;
+      renderTabContent("summary");
+    }
+  }
+
+  async function generateQuiz(force = false) {
+    if (force) {
+      currentQuiz = null;
+      currentRoadmap = null;
+      await deleteStorageItem(currentVideoId, CONFIG.STORAGE_KEYS.QUIZ_PREFIX);
+      await deleteStorageItem(currentVideoId, CONFIG.STORAGE_KEYS.ROADMAP_PREFIX);
+      quizActiveIndex = 0;
+      quizScore = 0;
+      selectedOptionIndex = null;
+      questionAnswered = false;
+    }
+    isGeneratingQuiz = true;
+    renderTabContent("quiz");
+    try {
+      const url = `${CONFIG.BACKEND_BASE_URL}${CONFIG.ENDPOINTS.QUIZ}`;
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ video_id: currentVideoId, force_regenerate: force }),
+      });
+      if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+      const data = await response.json();
+      if (data.success && data.quiz) {
+        currentQuiz = data.quiz;
+        quizActiveIndex = 0;
+        quizScore = 0;
+        selectedOptionIndex = null;
+        questionAnswered = false;
+        await saveStorageItem(currentVideoId, CONFIG.STORAGE_KEYS.QUIZ_PREFIX, currentQuiz);
+      }
+    } catch (err) {
+      showError(`Failed to generate quiz: ${err.message}`);
+    } finally {
+      isGeneratingQuiz = false;
+      renderTabContent("quiz");
+    }
+  }
+
+  async function generateRoadmap(force = false) {
+    if (force) {
+      currentRoadmap = null;
+      await deleteStorageItem(currentVideoId, CONFIG.STORAGE_KEYS.ROADMAP_PREFIX);
+      roadmapCheckpointsState = {};
+      await saveRoadmapCheckpointsState(currentVideoId);
+    }
+    isGeneratingRoadmap = true;
+    renderTabContent("roadmap");
+    try {
+      const url = `${CONFIG.BACKEND_BASE_URL}${CONFIG.ENDPOINTS.ROADMAP}`;
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ video_id: currentVideoId, force_regenerate: force }),
+      });
+      if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+      const data = await response.json();
+      if (data.success && data.roadmap) {
+        currentRoadmap = data.roadmap;
+        await saveStorageItem(currentVideoId, CONFIG.STORAGE_KEYS.ROADMAP_PREFIX, currentRoadmap);
+      }
+    } catch (err) {
+      showError(`Failed to generate roadmap: ${err.message}`);
+    } finally {
+      isGeneratingRoadmap = false;
+      renderTabContent("roadmap");
+    }
+  }
+
+  // ── Render Utilities ──────────────────────────────────────────────────────
+  function renderQuiz() {
+    const container = document.getElementById("yac-quiz-scrollable");
+    if (!currentQuiz || currentQuiz.length === 0) return;
+
+    if (quizActiveIndex >= currentQuiz.length) {
+      const percentage = Math.round((quizScore / currentQuiz.length) * 100);
+      let feedback = "Let's try again to master this content!";
+      let badge = "🥈 Keep Learning";
+      if (percentage === 100) {
+        feedback = "Perfect score! You've mastered this video.";
+        badge = "🏆 Perfect Score";
+      } else if (percentage >= 80) {
+        feedback = "Great job! You have a solid grasp of the concepts.";
+        badge = "🥇 Excellent";
+      } else if (percentage >= 50) {
+        feedback = "Good effort! Review the summary and try again.";
+        badge = "📈 Good Effort";
+      }
+      
+      container.innerHTML = `
+        <div class="yac-quiz-results">
+          <div class="yac-results-badge">${badge}</div>
+          <div class="yac-results-score-circle">
+            <span class="yac-results-score">${quizScore}</span>
+            <span class="yac-results-total">/ ${currentQuiz.length}</span>
+          </div>
+          <div class="yac-results-percentage">${percentage}% Correct</div>
+          <div class="yac-results-feedback">${feedback}</div>
+          <div style="display: flex; gap: 8px; justify-content: center; width: 100%;">
+            <button class="yac-action-btn" id="yac-quiz-retry-btn" style="flex: 1;">Retake Quiz</button>
+            <button class="yac-action-btn" id="yac-regen-quiz-results-btn" style="flex: 1; background: rgba(239, 68, 68, 0.08); color: #ef4444; border-color: rgba(239, 68, 68, 0.2);" title="Regenerate Quiz">Regenerate</button>
+          </div>
+        </div>
+      `;
+      
+      document.getElementById("yac-quiz-retry-btn").addEventListener("click", () => {
+        quizActiveIndex = 0;
+        quizScore = 0;
+        selectedOptionIndex = null;
+        questionAnswered = false;
+        renderQuiz();
+      });
+      document.getElementById("yac-regen-quiz-results-btn").addEventListener("click", () => {
+        if (confirm("Regenerate quiz? This will also clear your roadmap history for this video.")) {
+          generateQuiz(true);
+        }
+      });
+      return;
+    }
+
+    const q = currentQuiz[quizActiveIndex];
+    let optionsHtml = q.options.map((opt, idx) => {
+      let btnClass = "yac-quiz-option";
+      if (questionAnswered) {
+        if (idx === q.answer) {
+          btnClass += " correct";
+        } else if (idx === selectedOptionIndex) {
+          btnClass += " incorrect";
+        } else {
+          btnClass += " disabled";
+        }
+      } else if (idx === selectedOptionIndex) {
+        btnClass += " selected";
+      }
+      
+      return `
+        <button class="${btnClass}" data-index="${idx}" ${questionAnswered ? "disabled" : ""}>
+          <span class="yac-option-letter">${String.fromCharCode(65 + idx)}</span>
+          <span class="yac-option-text">${escapeHtml(opt)}</span>
+        </button>
+      `;
+    }).join("");
+
+    let actionBtnHtml = "";
+    if (questionAnswered) {
+      const isLast = quizActiveIndex === currentQuiz.length - 1;
+      actionBtnHtml = `<button class="yac-action-btn" id="yac-quiz-next-btn">${isLast ? "View Results" : "Next Question"}</button>`;
+    } else {
+      actionBtnHtml = `<button class="yac-action-btn" id="yac-quiz-submit-btn" ${selectedOptionIndex === null ? "disabled" : ""}>Submit Answer</button>`;
+    }
+
+    container.innerHTML = `
+      <div class="yac-quiz-card">
+        <div class="yac-quiz-header" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+          <div style="flex: 1;">
+            <span class="yac-quiz-progress">Question ${quizActiveIndex + 1} of ${currentQuiz.length}</span>
+            <div class="yac-quiz-progress-bar">
+              <div class="yac-quiz-progress-fill" style="width: ${((quizActiveIndex) / currentQuiz.length) * 100}%"></div>
+            </div>
+          </div>
+          <button class="yac-action-btn-sm" id="yac-regen-quiz-btn" style="background: transparent; border: none; padding: 4px; color: var(--yac-text-muted); cursor: pointer; display: flex; align-items: center; justify-content: center;" title="Regenerate quiz (clears downstream cards, roadmap)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+              <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8m0 0H15m6 0V2m-9 20a9 9 0 0 1-9-9"/>
+            </svg>
+          </button>
+        </div>
+        <div class="yac-quiz-question">${escapeHtml(q.question)}</div>
+        <div class="yac-quiz-options">
+          ${optionsHtml}
+        </div>
+        <div class="yac-quiz-footer">
+          ${actionBtnHtml}
+        </div>
+      </div>
+    `;
+
+    container.querySelectorAll(".yac-quiz-option").forEach(btn => {
+      btn.addEventListener("click", () => {
+        if (questionAnswered) return;
+        selectedOptionIndex = parseInt(btn.getAttribute("data-index"));
+        renderQuiz();
+      });
+    });
+
+    const submitBtn = document.getElementById("yac-quiz-submit-btn");
+    if (submitBtn) {
+      submitBtn.addEventListener("click", () => {
+        if (selectedOptionIndex === null) return;
+        questionAnswered = true;
+        if (selectedOptionIndex === q.answer) {
+          quizScore++;
+        }
+        renderQuiz();
+      });
+    }
+
+    const nextBtn = document.getElementById("yac-quiz-next-btn");
+    if (nextBtn) {
+      nextBtn.addEventListener("click", () => {
+        quizActiveIndex++;
+        selectedOptionIndex = null;
+        questionAnswered = false;
+        renderQuiz();
+      });
+    }
+
+    const regenBtn = document.getElementById("yac-regen-quiz-btn");
+    if (regenBtn) {
+      regenBtn.addEventListener("click", () => {
+        if (confirm("Regenerate quiz? This will also clear your roadmap history for this video.")) {
+          generateQuiz(true);
+        }
+      });
+    }
+  }
+
+  function renderRoadmap() {
+    const container = document.getElementById("yac-roadmap-scrollable");
+    if (!currentRoadmap || currentRoadmap.length === 0) return;
+
+    let stepsHtml = currentRoadmap.map((item, stepIdx) => {
+      let checkpointsHtml = "";
+      if (item.checkpoints && item.checkpoints.length > 0) {
+        checkpointsHtml = `
+          <ul class="yac-roadmap-checkpoints">
+            ${item.checkpoints.map((cp, cpIdx) => {
+              const stateKey = `${stepIdx}_${cpIdx}`;
+              const isChecked = !!roadmapCheckpointsState[stateKey];
+              return `
+                <li class="yac-roadmap-checkpoint">
+                  <label class="yac-checkpoint-label">
+                    <input type="checkbox" class="yac-checkpoint-checkbox" data-step="${stepIdx}" data-checkpoint="${cpIdx}" ${isChecked ? "checked" : ""}>
+                    <span class="yac-checkbox-custom"></span>
+                    <span class="yac-checkpoint-text">${escapeHtml(cp)}</span>
+                  </label>
+                </li>
+              `;
+            }).join("")}
+          </ul>
+        `;
+      }
+
+      return `
+        <div class="yac-roadmap-step">
+          <div class="yac-roadmap-timeline">
+            <div class="yac-step-circle">${item.step || (stepIdx + 1)}</div>
+            ${stepIdx < currentRoadmap.length - 1 ? '<div class="yac-step-line"></div>' : ""}
+          </div>
+          <div class="yac-roadmap-details">
+            <h3 class="yac-roadmap-step-title">
+              ${escapeHtml(item.title)}
+              ${item.timestamp ? `<span class="yt-chat-timestamp-badge" data-time="${escapeHtml(item.timestamp)}">⏱️ ${escapeHtml(item.timestamp)}</span>` : ""}
+            </h3>
+            <p class="yac-roadmap-step-desc">${escapeHtml(item.description)}</p>
+            ${checkpointsHtml}
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    container.innerHTML = `
+      <div class="yac-roadmap-container">
+        <div class="yac-roadmap-header" style="display: flex; justify-content: space-between; align-items: flex-start; width: 100%;">
+          <div>
+            <h2>Learning Path</h2>
+            <p>Follow these steps to master the video content. Check off items as you complete them.</p>
+          </div>
+          <button class="yac-action-btn-sm" id="yac-regen-roadmap-btn" style="background: transparent; border: none; padding: 4px; color: var(--yac-text-muted); cursor: pointer; flex-shrink: 0; margin-top: 2px;" title="Regenerate roadmap">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+              <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8m0 0H15m6 0V2m-9 20a9 9 0 0 1-9-9"/>
+            </svg>
+          </button>
+        </div>
+        <div class="yac-roadmap-steps">
+          ${stepsHtml}
+        </div>
+      </div>
+    `;
+
+    container.querySelectorAll(".yac-checkpoint-checkbox").forEach(cb => {
+      cb.addEventListener("change", async (e) => {
+        const stepIdx = cb.getAttribute("data-step");
+        const cpIdx = cb.getAttribute("data-checkpoint");
+        const stateKey = `${stepIdx}_${cpIdx}`;
+        roadmapCheckpointsState[stateKey] = cb.checked;
+        await saveRoadmapCheckpointsState(currentVideoId);
+      });
+    });
+
+    const regenRoadmapBtn = document.getElementById("yac-regen-roadmap-btn");
+    if (regenRoadmapBtn) {
+      regenRoadmapBtn.addEventListener("click", () => {
+        if (confirm("Regenerate learning roadmap?")) {
+          generateRoadmap(true);
+        }
+      });
+    }
+  }
+
+  function parseSummaryMarkdown(md) {
+    if (!md) return "";
+    const lines = md.split("\n");
+    let inList = false;
+    let htmlLines = [];
+
+    for (let line of lines) {
+      let trimmed = line.trim();
+      
+      if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+        if (!inList) {
+          htmlLines.push('<ul class="yac-summary-list">');
+          inList = true;
+        }
+        let content = trimmed.substring(2);
+        content = formatInlineMarkdown(content);
+        htmlLines.push(`<li>${content}</li>`);
+        continue;
+      } else {
+        if (inList) {
+          htmlLines.push("</ul>");
+          inList = false;
+        }
+      }
+
+      if (trimmed.startsWith("### ")) {
+        htmlLines.push(`<h3>${formatInlineMarkdown(trimmed.substring(4))}</h3>`);
+      } else if (trimmed.startsWith("## ")) {
+        htmlLines.push(`<h2>${formatInlineMarkdown(trimmed.substring(3))}</h2>`);
+      } else if (trimmed.startsWith("# ")) {
+        htmlLines.push(`<h1>${formatInlineMarkdown(trimmed.substring(2))}</h1>`);
+      } else if (trimmed === "") {
+        continue;
+      } else {
+        htmlLines.push(`<p>${formatInlineMarkdown(trimmed)}</p>`);
+      }
+    }
+    
+    if (inList) {
+      htmlLines.push("</ul>");
+    }
+
+    return htmlLines.join("\n");
+  }
+
+  function formatInlineMarkdown(text) {
+    let escaped = escapeHtml(text)
+      .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+      .replace(/\*(.*?)\*/g, "<em>$1</em>")
+      .replace(/`(.*?)`/g, "<code>$1</code>");
+
+    // Replace [MM:SS] or (MM:SS) or [H:MM:SS] with clickable badges
+    escaped = escaped.replace(/(\[|\()(\d{1,2}:\d{2}(?::\d{2})?)(\]|\))/g, (match, open, timeStr, close) => {
+      return `<span class="yt-chat-timestamp-badge" data-time="${timeStr}">⏱️ ${timeStr}</span>`;
+    });
+
+    return escaped;
+  }
+
   // ── Core: listen for messages from background script ─────────────────────
   chrome.runtime.onMessage.addListener((message) => {
     if (message.type === "VIDEO_PROCESSED") {
@@ -566,12 +1286,27 @@
   let lastUrl = location.href;
 
   const observer = new MutationObserver(() => {
+    const newVideoId = getVideoId();
     if (location.href !== lastUrl) {
       lastUrl = location.href;
-      const newVideoId = getVideoId();
       if (newVideoId && newVideoId !== currentVideoId) {
         // Small delay to let YouTube update the DOM with new title
         setTimeout(() => initVideo(newVideoId), 800);
+      } else if (!newVideoId) {
+        document.getElementById("yt-ai-chat-root")?.remove();
+        currentVideoId = null;
+      }
+    }
+
+    // Self-healing: Ensure panel is always injected and intact on watch pages
+    if (newVideoId) {
+      if (!document.getElementById("yt-ai-chat-root") && document.body) {
+        buildPanel();
+        if (currentVideoId === newVideoId) {
+          renderTabContent(activeTab || "chat");
+        } else {
+          initVideo(newVideoId);
+        }
       }
     }
   });

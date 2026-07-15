@@ -22,7 +22,7 @@
 
   "content_scripts": [
     {
-      "matches": ["https://www.youtube.com/watch*"],
+      "matches": ["https://www.youtube.com/*"],
       "js": ["constants.js", "content.js"],
       "css": ["chat-panel.css"],
       "run_at": "document_idle"

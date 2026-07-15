@@ -11,3 +11,4 @@ supadata
 python-dotenv
 pydantic
 sentence-transformers
+youtube-transcript-api

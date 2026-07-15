@@ -14,11 +14,17 @@ const CONFIG = {
   ENDPOINTS: {
     PROCESS_VIDEO: "/process-video",
     ASK: "/ask",
+    SUMMARY: "/summary",
+    QUIZ: "/quiz",
+    ROADMAP: "/roadmap",
   },
 
   /** Storage keys */
   STORAGE_KEYS: {
     CHAT_HISTORY_PREFIX: "chat_", // chat_<videoId>
+    SUMMARY_PREFIX: "summary_",
+    QUIZ_PREFIX: "quiz_",
+    ROADMAP_PREFIX: "roadmap_",
     SETTINGS: "yt_ai_settings",
   },
 

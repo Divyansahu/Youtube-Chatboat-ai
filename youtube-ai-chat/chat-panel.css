@@ -615,6 +615,629 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/* ── Tabs Navigation Layout ────────────────────────────────────────────────── */
+#yac-tabs {
+  display: flex;
+  background: #141416; /* Inset dark sleek background */
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 8px 12px;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+#yac-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.yac-tab-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: #a1a1aa;
+  font-family: var(--yac-font);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 20px; /* Capsule pill design */
+  cursor: pointer;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  user-select: none;
+}
+
+.yac-tab-btn:hover {
+  color: #f4f4f5;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.yac-tab-btn.active {
+  color: #ffffff;
+  background: rgba(99, 102, 241, 0.16); /* Translucent indigo glow */
+  border-color: rgba(99, 102, 241, 0.35);
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.08);
+}
+
+/* ── Tab Content & Panels ──────────────────────────────────────────────────── */
+#yac-tab-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.yac-tab-pane {
+  flex: 1;
+  display: none;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.yac-tab-pane.active-pane {
+  display: flex;
+}
+
+.yac-tab-scrollable {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 14px;
+  display: flex;
+  flex-direction: column;
+}
+
+.yac-tab-scrollable::-webkit-scrollbar {
+  width: 4px;
+}
+.yac-tab-scrollable::-webkit-scrollbar-track {
+  background: transparent;
+}
+.yac-tab-scrollable::-webkit-scrollbar-thumb {
+  background: var(--yac-bg-tertiary);
+  border-radius: 2px;
+}
+
+/* ── CTA / Empty State ─────────────────────────────────────────────────────── */
+.yac-cta-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 40px 20px;
+  flex: 1;
+  gap: 12px;
+}
+
+.yac-cta-icon {
+  font-size: 40px;
+  margin-bottom: 8px;
+  animation: yac-pulse 3s infinite;
+}
+
+.yac-cta-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--yac-text-primary);
+}
+
+.yac-cta-sub {
+  font-size: 12px;
+  color: var(--yac-text-secondary);
+  max-width: 240px;
+  line-height: 1.5;
+}
+
+.yac-action-btn {
+  background: var(--yac-accent);
+  color: white;
+  border: none;
+  border-radius: var(--yac-radius-md);
+  font-family: var(--yac-font);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 10px 20px;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+  box-shadow: 0 4px 12px var(--yac-accent-glow);
+}
+
+.yac-action-btn:hover:not(:disabled) {
+  background: var(--yac-accent-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px var(--yac-accent-glow);
+}
+
+.yac-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* ── Loading State ─────────────────────────────────────────────────────────── */
+.yac-loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 40px 20px;
+  flex: 1;
+  gap: 16px;
+}
+
+.yac-spinner-large {
+  width: 36px;
+  height: 36px;
+  border: 3.5px solid rgba(99, 102, 241, 0.2);
+  border-top-color: var(--yac-accent);
+  border-radius: 50%;
+  animation: yac-spin 1s linear infinite;
+}
+
+.yac-loading-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--yac-text-primary);
+}
+
+.yac-loading-sub {
+  font-size: 12px;
+  color: var(--yac-text-muted);
+  max-width: 200px;
+  line-height: 1.4;
+}
+
+/* ── Summary Styling ───────────────────────────────────────────────────────── */
+.yac-summary-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.yac-summary-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.yac-action-btn-sm {
+  background: var(--yac-bg-tertiary);
+  border: 1px solid var(--yac-border);
+  color: var(--yac-text-secondary);
+  border-radius: var(--yac-radius-sm);
+  font-family: var(--yac-font);
+  font-size: 11px;
+  padding: 6px 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s;
+}
+
+.yac-action-btn-sm:hover {
+  background: var(--yac-bg-hover);
+  color: var(--yac-text-primary);
+  border-color: var(--yac-border-focus);
+}
+
+.yac-summary-text {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--yac-text-primary);
+}
+
+.yac-summary-text h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: white;
+  margin-top: 18px;
+  margin-bottom: 8px;
+}
+
+.yac-summary-text p {
+  margin-bottom: 12px;
+  color: #e2e2e8;
+}
+
+.yac-summary-list {
+  margin-left: 18px;
+  margin-bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.yac-summary-list li {
+  list-style-type: disc;
+  color: #d1d1d6;
+}
+
+/* ── Quiz Styling ──────────────────────────────────────────────────────────── */
+.yac-quiz-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.yac-quiz-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.yac-quiz-progress {
+  font-size: 11px;
+  color: var(--yac-text-secondary);
+  font-weight: 500;
+}
+
+.yac-quiz-progress-bar {
+  width: 100%;
+  height: 4px;
+  background: var(--yac-bg-tertiary);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.yac-quiz-progress-fill {
+  height: 100%;
+  background: var(--yac-accent);
+  transition: width 0.3s ease;
+}
+
+.yac-quiz-question {
+  font-size: 14px;
+  font-weight: 600;
+  color: white;
+  line-height: 1.5;
+}
+
+.yac-quiz-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.yac-quiz-option {
+  background: var(--yac-bg-secondary);
+  border: 1px solid var(--yac-border);
+  border-radius: var(--yac-radius-md);
+  color: var(--yac-text-primary);
+  font-family: var(--yac-font);
+  font-size: 13px;
+  padding: 10px 12px;
+  cursor: pointer;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition: all 0.2s ease;
+  width: 100%;
+}
+
+.yac-quiz-option:hover:not(:disabled) {
+  background: var(--yac-bg-hover);
+  border-color: var(--yac-border-focus);
+}
+
+.yac-option-letter {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--yac-bg-tertiary);
+  color: var(--yac-text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.yac-quiz-option.selected {
+  border-color: var(--yac-accent);
+  background: rgba(99, 102, 241, 0.08);
+}
+
+.yac-quiz-option.selected .yac-option-letter {
+  background: var(--yac-accent);
+  color: white;
+}
+
+.yac-quiz-option.correct {
+  border-color: var(--yac-success);
+  background: rgba(34, 197, 94, 0.1);
+  color: #86efac;
+}
+
+.yac-quiz-option.correct .yac-option-letter {
+  background: var(--yac-success);
+  color: white;
+}
+
+.yac-quiz-option.incorrect {
+  border-color: var(--yac-error);
+  background: rgba(239, 68, 68, 0.1);
+  color: #fca5a5;
+}
+
+.yac-quiz-option.incorrect .yac-option-letter {
+  background: var(--yac-error);
+  color: white;
+}
+
+.yac-quiz-option.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.yac-quiz-footer {
+  margin-top: 8px;
+  display: flex;
+}
+
+.yac-quiz-footer .yac-action-btn {
+  flex: 1;
+}
+
+.yac-quiz-results {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 30px 10px;
+  text-align: center;
+  gap: 16px;
+}
+
+.yac-results-badge {
+  background: var(--yac-bg-tertiary);
+  border: 1px solid var(--yac-border);
+  border-radius: var(--yac-radius-xl);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 6px 14px;
+  color: var(--yac-text-primary);
+}
+
+.yac-results-score-circle {
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  background: var(--yac-bg-secondary);
+  border: 4px solid var(--yac-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.yac-results-score {
+  font-size: 26px;
+  font-weight: 700;
+  color: white;
+}
+
+.yac-results-total {
+  font-size: 14px;
+  color: var(--yac-text-muted);
+  margin-top: 6px;
+}
+
+.yac-results-percentage {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--yac-text-primary);
+}
+
+.yac-results-feedback {
+  font-size: 12px;
+  color: var(--yac-text-secondary);
+  max-width: 220px;
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+
+
+
+.yac-nav-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--yac-border);
+  background: var(--yac-bg-secondary);
+  color: var(--yac-text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.yac-nav-btn:hover:not(:disabled) {
+  background: var(--yac-bg-hover);
+  color: white;
+  border-color: var(--yac-border-focus);
+}
+
+.yac-nav-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.yac-nav-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.yac-nav-indicator {
+  font-size: 12px;
+  color: var(--yac-text-secondary);
+  font-family: var(--yac-mono);
+}
+
+/* ── Roadmap Styling ───────────────────────────────────────────────────────── */
+.yac-roadmap-container {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.yac-roadmap-header h2 {
+  font-size: 15px;
+  font-weight: 600;
+  color: white;
+  margin-bottom: 4px;
+}
+
+.yac-roadmap-header p {
+  font-size: 11px;
+  color: var(--yac-text-secondary);
+  line-height: 1.4;
+}
+
+.yac-roadmap-steps {
+  display: flex;
+  flex-direction: column;
+  margin-left: 10px;
+}
+
+.yac-roadmap-step {
+  display: flex;
+  gap: 16px;
+  position: relative;
+}
+
+.yac-roadmap-timeline {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 24px;
+  flex-shrink: 0;
+}
+
+.yac-step-circle {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--yac-bg-tertiary);
+  border: 2px solid var(--yac-border);
+  color: var(--yac-text-secondary);
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+  transition: all 0.2s;
+}
+
+.yac-roadmap-step:hover .yac-step-circle {
+  border-color: var(--yac-accent);
+  color: white;
+  box-shadow: 0 0 6px var(--yac-accent-glow);
+}
+
+.yac-step-line {
+  width: 2px;
+  flex: 1;
+  background: var(--yac-border);
+  margin-top: 4px;
+  margin-bottom: 4px;
+}
+
+.yac-roadmap-details {
+  flex: 1;
+  padding-bottom: 24px;
+}
+
+.yac-roadmap-step-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: white;
+  margin-top: 2px;
+  margin-bottom: 4px;
+}
+
+.yac-roadmap-step-desc {
+  font-size: 12px;
+  color: var(--yac-text-secondary);
+  line-height: 1.5;
+  margin-bottom: 10px;
+}
+
+.yac-roadmap-checkpoints {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  list-style: none;
+}
+
+.yac-roadmap-checkpoint {
+  font-size: 12px;
+}
+
+.yac-checkpoint-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.yac-checkpoint-checkbox {
+  position: absolute;
+  opacity: 0;
+  cursor: pointer;
+  height: 0;
+  width: 0;
+}
+
+.yac-checkbox-custom {
+  width: 15px;
+  height: 15px;
+  border: 1.5px solid var(--yac-border);
+  border-radius: 4px;
+  background: var(--yac-bg-secondary);
+  display: inline-block;
+  flex-shrink: 0;
+  position: relative;
+  margin-top: 2px;
+  transition: all 0.15s;
+}
+
+.yac-checkpoint-checkbox:checked ~ .yac-checkbox-custom {
+  background: var(--yac-accent);
+  border-color: var(--yac-accent);
+}
+
+.yac-checkpoint-checkbox:checked ~ .yac-checkbox-custom::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 4px;
+  height: 8px;
+  border: solid white;
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+
+.yac-checkpoint-checkbox:checked ~ .yac-checkpoint-text {
+  color: var(--yac-text-muted);
+  text-decoration: line-through;
+}
+
+.yac-checkpoint-text {
+  color: #e2e2e8;
+  line-height: 1.4;
+  transition: color 0.15s;
+}
+
+
 /* ── Responsive: narrow screens ───────────────────────────────────────────── */
 @media (max-width: 900px) {
   #yt-ai-chat-root {
@@ -630,3 +1253,33 @@
     width: calc(100vw - 64px);
   }
 }
+
+/* ── Clickable Timestamp Badges ────────────────────────────────────────────── */
+.yt-chat-timestamp-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: rgba(99, 102, 241, 0.15);
+  color: #818cf8;
+  border: 1px dashed rgba(99, 102, 241, 0.3);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  font-family: monospace;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+  margin: 0 2px;
+}
+
+.yt-chat-timestamp-badge:hover {
+  background: rgba(99, 102, 241, 0.25);
+  border-color: #6366f1;
+  transform: translateY(-0.5px);
+}
+
+.yt-chat-timestamp-badge:active {
+  transform: translateY(0.5px);
+}
+
